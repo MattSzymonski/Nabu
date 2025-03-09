@@ -3,7 +3,7 @@ import { View, Text, Button, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 import { HelloWidget } from './HelloWidget';
-
+import BackgroundFetch from "react-native-background-fetch";
 
 
 const sentences = [
@@ -21,33 +21,44 @@ const getRandomSentence = () => {
 const App = () => {
   const [sentence, setSentence] = useState(getRandomSentence());
 
-  React.useEffect(() => {
-    requestWidgetUpdate({
-      widgetName: 'Hello',
-      renderWidget: () => <HelloWidget sentence={sentence} />,
-      widgetNotFound: () => {
-        // Called if no widget is present on the home screen
-      }
-    });
-  }, [sentence]);
-
   useEffect(() => {
-    loadSentence();
+    updateSentence();
+    initBackgroundFetch(); // ✅ Start background updates
   }, []);
-
-  const loadSentence = async () => {
-    const storedSentence = await AsyncStorage.getItem('randomSentence');
-    if (storedSentence) {
-      setSentence(storedSentence);
-    } else {
-      updateSentence();
-    }
-  };
 
   const updateSentence = async () => {
     const newSentence = getRandomSentence();
     setSentence(newSentence);
-    await AsyncStorage.setItem('randomSentence', newSentence);
+    requestWidgetUpdate({
+      widgetName: 'Hello',
+      renderWidget: () => <HelloWidget sentence={newSentence} />,
+      widgetNotFound: () => {
+        // Called if no widget is present on the home screen
+      }
+    });
+  };
+
+  const initBackgroundFetch = async () => {
+    BackgroundFetch.configure(
+      {
+        minimumFetchInterval: 30, // ⏰ Every 30 minutes
+        stopOnTerminate: false, // ✅ Keeps running when app is closed
+        enableHeadless: true,
+        startOnBoot: true, // ✅ Runs after device reboots
+      },
+      async (taskId) => {
+        console.log("[BackgroundFetch] Task started:", taskId);
+        await updateSentence();
+        BackgroundFetch.finish(taskId);
+      },
+      async (taskId: string) => {
+        console.warn('[BackgroundFetch] TIMEOUT task: ', taskId);
+        BackgroundFetch.finish(taskId);
+      }
+    );
+  
+    // Start the background task
+    BackgroundFetch.start();
   };
 
   return (
